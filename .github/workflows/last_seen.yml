@@ -2,43 +2,41 @@ name: beQuiet Last Seen
 
 on:
   schedule:
-    - cron: "0 * * * *"        # hourly (UTC)
-    - cron: "58 23 * * *"      # daily summary 23:58 UTC
+    - cron: "0 * * * *"      # hourly (UTC)
+    - cron: "58 21 * * *"    # 23:58 Deutschland im SOMMER (MESZ = UTC+2)
+    - cron: "58 22 * * *"    # 23:58 Deutschland im WINTER (MEZ = UTC+1)
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: last-seen-tracker
+  cancel-in-progress: true
+
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           persist-credentials: true
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Hourly update: just scrape & update last_seen when online
-      - name: Hourly scrape (MODE=hourly)
-        if: ${{ github.event_name == 'schedule' && contains(join(matrix.cron || steps.get_cron.outputs.cron, ' '), '0 * * * *') || github.event_name == 'workflow_dispatch' }}
+      # Ein einzelner Script-Run im AUTO-Modus:
+      # - Bei 23:58 Europe/Berlin -> Daily-Post
+      # - sonst -> Hourly-Update (last_seen aktualisieren)
+      - name: Run tracker (AUTO)
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL_LASTSEEN }}
-          MODE: "hourly"
-        run: python bequiet_last_seen.py
-
-      # Daily summary at 23:58 UTC
-      - name: Daily summary (MODE=daily)
-        if: ${{ github.event_name == 'schedule' && contains(join(matrix.cron || steps.get_cron.outputs.cron, ' '), '58 23 * * *') || github.event_name == 'workflow_dispatch' }}
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL_LASTSEEN }}
-          MODE: "daily"
+          MODE: "auto"
         run: python bequiet_last_seen.py
 
       - name: Commit state (if changed)
