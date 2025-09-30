@@ -7,11 +7,12 @@ import requests
 from bs4 import BeautifulSoup
 
 # ---------- Konfiguration ----------
-URL = "https://pr-underworld.com/website/"
+URL = "https://pr-underworld.com/website/"   # Startseite zeigt alle aktuell Online-Spieler
 GUILD_NAME = "beQuiet"
 SERVER_LABEL = "Netherworld"
 
-STATE_FILE = Path("state_last_seen.json")
+STATE_FILE   = Path("state_last_seen.json")
+MEMBERS_FILE = Path("bequiet_members.txt")
 TIMEOUT = 20
 
 WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
@@ -28,6 +29,26 @@ def load_state():
 
 def save_state(state):
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+# ---------- Mitgliederliste ----------
+def load_members() -> list[str]:
+    if not MEMBERS_FILE.exists():
+        return []
+    text = MEMBERS_FILE.read_text(encoding="utf-8")
+    names = [line.strip() for line in text.splitlines()]
+    names = [n for n in names if n]  # leere Zeilen raus
+    # Duplikate entfernen, Reihenfolge stabilisieren
+    seen, uniq = set(), []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            uniq.append(n)
+    return uniq
+
+def save_members(names: list[str]) -> None:
+    # sortiert und ohne Duplikate speichern
+    uniq_sorted = sorted(set(n.strip() for n in names if n.strip()), key=str.lower)
+    MEMBERS_FILE.write_text("\n".join(uniq_sorted) + ("\n" if uniq_sorted else ""), encoding="utf-8")
 
 # ---------- Discord ----------
 def post_to_discord(content: str):
@@ -61,10 +82,8 @@ def fetch_html(url: str) -> str:
 
 def find_home_server_table(soup: BeautifulSoup, server_label: str):
     """
-    Startseite hat Überschriften und jeweils eine Tabelle
-    Beispiel
-    <h4>Underworld</h4> <table>...</table>
-    <h4>Netherworld</h4> <table>...</table>
+    Startseite hat Überschrift(en) und darunter je eine Tabelle (Underworld/Netherworld).
+    Wir suchen die Tabelle, deren Heading den Servernamen enthält.
     """
     for h in soup.find_all(["h3", "h4", "h5", "h6"]):
         heading = h.get_text(strip=True)
@@ -74,12 +93,12 @@ def find_home_server_table(soup: BeautifulSoup, server_label: str):
                 return tbl
     return None
 
-def parse_home_bequiet_rows(table):
+def parse_home_bequiet_rows(table) -> list[dict]:
     """
-    Spaltenfolge auf der Startseite
-    # | Name | Level | Job | Guild
-    Guild hat oft <img> und danach den Namen als Text
-    Jeder Eintrag der Tabelle gilt als aktuell online
+    Spaltenfolge auf der Startseite:
+      # | Name | Level | Job | Guild
+    In 'Guild' steht ggf. ein <img> und danach der Gildenname als Text.
+    Jedes aufgeführte Zeilen-Item gilt hier als *aktuell online*.
     """
     res = []
     tbody = table.find("tbody")
@@ -91,6 +110,8 @@ def parse_home_bequiet_rows(table):
             continue
         name = tds[1].get_text(strip=True)
         guild_txt = tds[4].get_text(" ", strip=True)
+        if not name:
+            continue
         if GUILD_NAME.lower() in guild_txt.lower():
             res.append({"name": name, "online": True})
     return res
@@ -114,10 +135,15 @@ def fmt_ts_utc(ts: int) -> str:
 # ---------- Flows ----------
 def run_hourly():
     """
-    Startseite listet alle aktuell eingeloggten Spieler
-    Wir markieren beQuiet Spieler aus der Netherworld Tabelle als online und aktualisieren deren last_seen
-    Alle historisch bekannten beQuiet Spieler, die jetzt nicht auftauchen, erhalten Status offline
+    - Website laden und aktuell online befindliche beQuiet-Spieler ermitteln
+    - State updaten (last_seen für online, Status setzen)
+    - Mitgliederliste einlesen; alle daraus sicherstellen
+    - Neue gefundene beQuiet-Namen, die noch nicht in der Liste stehen, automatisch zur Datei hinzufügen
     """
+    # Mitgliederliste laden
+    member_names = set(load_members())
+
+    # Website parsen
     html = fetch_html(URL)
     soup = BeautifulSoup(html, "html.parser")
     table = find_home_server_table(soup, SERVER_LABEL)
@@ -125,38 +151,49 @@ def run_hourly():
         print("Netherworld table not found on homepage", file=sys.stderr)
         return
 
+    beq_rows = parse_home_bequiet_rows(table)
+    currently_online = {row["name"] for row in beq_rows}
+
+    # Mitgliederliste automatisch mit neu gefundenen beQuiet-Namen erweitern
+    newly_found = sorted(currently_online - member_names, key=str.lower)
+    if newly_found:
+        updated = sorted(member_names | set(newly_found), key=str.lower)
+        save_members(updated)
+        member_names = set(updated)
+        print(f"Added to members list: {', '.join(newly_found)}")
+
+    # State pflegen
     state = load_state()
     last_seen = state.setdefault("last_seen", {})
     last_status = state.setdefault("last_status", {})
-
-    beq_rows = parse_home_bequiet_rows(table)
     now_ts = int(time.time())
-    currently_online = set()
 
-    for row in beq_rows:
-        name = row["name"]
-        currently_online.add(name)
+    # Alle aus der Liste sollen im State existieren
+    for name in member_names:
+        last_seen.setdefault(name, 0)
+        last_status.setdefault(name, "offline")
+
+    # Online gesetzte Namen aktualisieren
+    for name in currently_online:
         last_seen[name] = now_ts
         last_status[name] = "online"
 
-    # alle bekannten beQuiet Namen, die aktuell nicht gelistet sind, auf offline setzen
-    known_names = set(last_seen.keys())
-    for name in known_names - currently_online:
+    # Alle anderen bekannten Namen offline setzen
+    for name in set(last_status.keys()) - currently_online:
         last_status[name] = "offline"
-
-    # sicherstellen, dass neue Namen Schlüssel haben
-    for name in currently_online:
-        last_seen.setdefault(name, 0)
-        last_status.setdefault(name, "online")
 
     save_state(state)
 
 def run_daily_summary():
     """
-    Tägliche Übersicht auf Basis der Startseite
-    current_online kommt aus der Netherworld Tabelle
-    all_names ist die Vereinigung aus historisch bekannten Namen und heutigen Namen
+    - Am Tagesende Übersicht posten:
+      * online jetzt
+      * sonst letzter bekannter Zeitpunkt aus State
+      * zusätzlich alle Namen aus der Mitgliederliste, damit niemand fehlt
+    - Neue beQuiet-Namen von der Seite werden auch hier zur Liste hinzugefügt
     """
+    member_names = set(load_members())
+
     html = fetch_html(URL)
     soup = BeautifulSoup(html, "html.parser")
     table = find_home_server_table(soup, SERVER_LABEL)
@@ -164,15 +201,29 @@ def run_daily_summary():
         print("Netherworld table not found on homepage", file=sys.stderr)
         return
 
-    state = load_state()
-    last_seen = state.get("last_seen", {})
-    last_status = state.get("last_status", {})
-
     beq_rows = parse_home_bequiet_rows(table)
     names_today = {r["name"] for r in beq_rows}
     current_online = set(names_today)
 
-    all_names = set(last_seen.keys()) | names_today
+    # Mitgliederliste mit neu erkannten Namen ergänzen (falls Daily ohne Hourly davor läuft)
+    newly_found = sorted(current_online - member_names, key=str.lower)
+    if newly_found:
+        updated = sorted(member_names | set(newly_found), key=str.lower)
+        save_members(updated)
+        member_names = set(updated)
+        print(f"Added to members list: {', '.join(newly_found)}")
+
+    state = load_state()
+    last_seen = state.get("last_seen", {})
+    last_status = state.get("last_status", {})
+
+    # Jeder aus der Liste soll im State präsent sein
+    for name in member_names:
+        last_seen.setdefault(name, 0)
+        last_status.setdefault(name, "offline")
+
+    # Gesamtnamen: historische + heute + Mitgliederliste
+    all_names = set(last_seen.keys()) | names_today | member_names
     if not all_names:
         post_to_discord("**Netherworld – beQuiet last seen**\nNo members tracked yet.")
         return
@@ -213,7 +264,7 @@ def main():
         run_daily_summary()
         return
 
-    # AUTO Modus
+    # AUTO Modus: Daily im Fenster, sonst Hourly
     now_b = now_berlin()
     if is_berlin_daily_window(now_b):
         run_daily_summary()
