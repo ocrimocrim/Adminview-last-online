@@ -17,14 +17,13 @@ TIMEOUT = 20
 WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
 MODE = os.getenv("MODE", "auto").strip().lower()  # "auto" | "hourly" | "daily"
 
-# ---------- State Helpers ----------
+# ---------- State ----------
 def load_state():
     if STATE_FILE.exists():
         try:
             return json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
-    # last_daily_date ist das Datum in Europe Berlin der letzten Daily Message im ISO Format YYYY-MM-DD
     return {"last_seen": {}, "last_status": {}, "last_daily_date": ""}
 
 def save_state(state):
@@ -41,7 +40,7 @@ def post_to_discord(content: str):
     except Exception as e:
         print(f"Discord error: {e} {getattr(r, 'text', '')}", file=sys.stderr)
 
-# ---------- Time Helpers ----------
+# ---------- Zeit ----------
 BERLIN = ZoneInfo("Europe/Berlin")
 
 def now_utc():
@@ -50,8 +49,9 @@ def now_utc():
 def now_berlin():
     return now_utc().astimezone(BERLIN)
 
-def is_berlin_2358(dt: datetime) -> bool:
-    return dt.hour == 23 and dt.minute == 58
+def is_berlin_daily_window(dt: datetime) -> bool:
+    # Daily zwischen 23:20 und 23:59 Europe/Berlin
+    return dt.hour == 23 and 20 <= dt.minute <= 59
 
 # ---------- Scraping ----------
 def fetch_html(url: str) -> str:
@@ -61,10 +61,10 @@ def fetch_html(url: str) -> str:
 
 def find_home_server_table(soup: BeautifulSoup, server_label: str):
     """
-    Sucht die Server Sektion auf der Startseite und liefert die zugehörige Tabelle
-    Erwartete Struktur
-    <h4>Underworld</h4> Tabelle
-    <h4>Netherworld</h4> Tabelle
+    Startseite hat Überschriften und jeweils eine Tabelle
+    Beispiel
+    <h4>Underworld</h4> <table>...</table>
+    <h4>Netherworld</h4> <table>...</table>
     """
     for h in soup.find_all(["h3", "h4", "h5", "h6"]):
         heading = h.get_text(strip=True)
@@ -76,11 +76,10 @@ def find_home_server_table(soup: BeautifulSoup, server_label: str):
 
 def parse_home_bequiet_rows(table):
     """
-    Liest Zeilen der Startseiten Tabelle
-    Spaltenfolge
+    Spaltenfolge auf der Startseite
     # | Name | Level | Job | Guild
-    Der Guild Cell enthält optional ein <img> und danach den Gildennamen als Text
-    Jeder Eintrag der Tabelle zählt als aktuell online
+    Guild hat oft <img> und danach den Namen als Text
+    Jeder Eintrag der Tabelle gilt als aktuell online
     """
     res = []
     tbody = table.find("tbody")
@@ -96,7 +95,7 @@ def parse_home_bequiet_rows(table):
             res.append({"name": name, "online": True})
     return res
 
-# ---------- Formatting ----------
+# ---------- Format ----------
 def human_delta(seconds: int) -> str:
     if seconds < 90:
         return f"{seconds}s ago"
@@ -112,7 +111,7 @@ def human_delta(seconds: int) -> str:
 def fmt_ts_utc(ts: int) -> str:
     return time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(ts))
 
-# ---------- Main Flows ----------
+# ---------- Flows ----------
 def run_hourly():
     """
     Startseite listet alle aktuell eingeloggten Spieler
@@ -145,7 +144,7 @@ def run_hourly():
     for name in known_names - currently_online:
         last_status[name] = "offline"
 
-    # neue Namen aus diesem Lauf sicherstellen
+    # sicherstellen, dass neue Namen Schlüssel haben
     for name in currently_online:
         last_seen.setdefault(name, 0)
         last_status.setdefault(name, "online")
@@ -178,7 +177,6 @@ def run_daily_summary():
         post_to_discord("**Netherworld – beQuiet last seen**\nNo members tracked yet.")
         return
 
-    # Sortierung online zuerst, dann nach last_seen absteigend, dann Name
     def sort_key(n):
         online = 1 if n in current_online else 0
         return (-online, -last_seen.get(n, 0), n.lower())
@@ -204,7 +202,6 @@ def run_daily_summary():
     content = header + "\n" + "\n".join(lines[:1900])
     post_to_discord(content)
 
-    # als gepostet markieren
     state["last_daily_date"] = today_berlin
     save_state(state)
 
@@ -216,9 +213,9 @@ def main():
         run_daily_summary()
         return
 
-    # MODE auto verwendet 23 58 Europe Berlin für die Daily Message
+    # AUTO Modus
     now_b = now_berlin()
-    if is_berlin_2358(now_b):
+    if is_berlin_daily_window(now_b):
         run_daily_summary()
     else:
         run_hourly()
