@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 # ---------- Konfiguration ----------
 URL = "https://pr-underworld.com/website/"
 MONSTERCOUNT_URL = "https://pr-underworld.com/website/monstercount/"
+RANKING_URL = "https://pr-underworld.com/website/ranking/"
 GUILD_NAME = "beQuiet"
 SERVER_LABEL = "Netherworld"
 
@@ -28,12 +29,17 @@ def load_state():
             return json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
-    return {"last_seen": {}, "last_status": {}, "last_daily_date": ""}
+    return {
+        "last_seen": {},
+        "last_status": {},
+        "last_daily_date": "",
+        "last_ranking_sync_date": ""
+    }
 
 def save_state(state):
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
-# ---------- Mitgliederliste ----------
+# ---------- Mitgliederdatei ----------
 def load_members() -> list[str]:
     if not MEMBERS_FILE.exists():
         return []
@@ -133,53 +139,84 @@ def fetch_html(url: str) -> str:
     r.raise_for_status()
     return r.text
 
-# ---------- Parsing: Homepage Online-Liste ----------
-def find_home_server_table(soup: BeautifulSoup, server_label: str):
+# ---------- Parsing Helfer ----------
+def find_table_under_heading(soup: BeautifulSoup, needle_lower: str):
     for h in soup.find_all(["h3", "h4", "h5", "h6"]):
         heading = h.get_text(strip=True)
-        if heading and server_label.lower() in heading.lower():
+        if heading and needle_lower in heading.lower():
             tbl = h.find_next("table")
             if tbl and tbl.find("tbody"):
                 return tbl
     return None
 
-def parse_home_bequiet_rows(table) -> list[dict]:
+# ---------- Homepage Online-Liste ----------
+def find_home_server_table(soup: BeautifulSoup, server_label: str):
+    return find_table_under_heading(soup, server_label.lower())
+
+def parse_home_rows(table) -> list[dict]:
+    """
+    Homepage Struktur
+      th scope=row Rang
+      td[0] Name
+      ...
+      td[-1] Gilde mit <img> und Text
+    """
     rows = []
     tbody = table.find("tbody")
     if not tbody:
         return rows
     for tr in tbody.find_all("tr"):
         tds = tr.find_all("td")
-        if len(tds) < 2:
+        if not tds:
             continue
         name = tds[0].get_text(strip=True)
-        guild = tds[1].get_text(strip=True)
-        if not name:
-            continue
-        if guild and GUILD_NAME.lower() in guild.lower():
-            rows.append({"name": name})
+        guild_text = tds[-1].get_text(strip=True) if len(tds) >= 2 else ""
+        if name:
+            rows.append({"name": name, "guild": guild_text})
     return rows
 
-# ---------- Parsing: Monstercount ----------
+def parse_home_bequiet_rows(table) -> list[dict]:
+    return [r for r in parse_home_rows(table)
+            if r.get("guild", "").lower().find(GUILD_NAME.lower()) != -1]
+
+# ---------- Ranking ----------
+def find_ranking_table_netherworld(soup: BeautifulSoup):
+    return find_table_under_heading(soup, "netherworld")
+
+def parse_ranking_netherworld_rows(table) -> list[dict]:
+    """
+    Ranking Struktur
+      th scope=row Rang
+      td[0] Online-Icon
+      td[1] Name
+      td[2] Level
+      td[3] Job-Icon
+      td[4] Exp
+      td[5] Gilde mit <img> und Text
+    """
+    rows = []
+    tbody = table.find("tbody")
+    if not tbody:
+        return rows
+    for tr in tbody.find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) >= 6:
+            name = tds[1].get_text(strip=True)
+            guild_text = tds[5].get_text(strip=True)
+            if name:
+                rows.append({"name": name, "guild": guild_text})
+    return rows
+
+# ---------- Monstercount ----------
 def find_monstercount_table(soup: BeautifulSoup, server_label: str):
-    """
-    Auf der Seite stehen zwei Blöcke mit h4-Überschriften.
-    Unter der Überschrift folgt eine Tabelle. Wir wählen die mit 'Netherworld'.
-    """
-    for h in soup.find_all(["h3", "h4", "h5", "h6"]):
-        heading = h.get_text(strip=True)
-        if heading and server_label.lower() in heading.lower():
-            tbl = h.find_next("table")
-            if tbl and tbl.find("tbody"):
-                return tbl
-    return None
+    return find_table_under_heading(soup, server_label.lower())
 
 def parse_monstercount_names(table) -> list[str]:
     """
-    tbody -> tr
-      th scope=row  ignorieren
-      td[0] = Name
-      td[1] = Zahl
+    Monstercount Struktur
+      th scope=row Rang
+      td[0] Name
+      td[1] Zahl
     """
     names = []
     tbody = table.find("tbody")
@@ -210,6 +247,58 @@ def fmt_ts_utc(ts: int) -> str:
     dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(BERLIN)
     return dt.strftime("%Y-%m-%d %H:%M")
 
+# ---------- Ranking Sync täglich ----------
+def sync_members_from_home_and_ranking(member_names: set[str], state: dict) -> set[str]:
+    """
+    Ergänzen nur aus Homepage und Ranking.
+    Entfernen nur, wenn der Name auf Homepage oder Ranking sichtbar ist und dort ohne beQuiet steht.
+    Monstercount bleibt außen vor.
+    """
+    today_str = today_berlin_date()
+    if state.get("last_ranking_sync_date") == today_str:
+        return member_names
+
+    # Homepage lesen
+    home_html = fetch_html(URL)
+    home_soup = BeautifulSoup(home_html, "html.parser")
+    home_table = find_home_server_table(home_soup, SERVER_LABEL)
+    home_rows = parse_home_rows(home_table) if home_table else []
+
+    # Ranking lesen
+    try:
+        r_html = fetch_html(RANKING_URL)
+        r_soup = BeautifulSoup(r_html, "html.parser")
+        r_table = find_ranking_table_netherworld(r_soup)
+        ranking_rows = parse_ranking_netherworld_rows(r_table) if r_table else []
+    except Exception as e:
+        print(f"Ranking fetch/parse error: {e}", file=sys.stderr)
+        ranking_rows = []
+
+    bequiet_home = {r["name"] for r in home_rows if r.get("guild", "").lower().find(GUILD_NAME.lower()) != -1}
+    bequiet_rank = {r["name"] for r in ranking_rows if r.get("guild", "").lower().find(GUILD_NAME.lower()) != -1}
+
+    to_add = (bequiet_home | bequiet_rank) - member_names
+
+    non_bequiet_home = {r["name"] for r in home_rows
+                        if r["name"] in member_names and r.get("guild", "") and r.get("guild", "").lower().find(GUILD_NAME.lower()) == -1}
+
+    non_bequiet_rank = {r["name"] for r in ranking_rows
+                        if r["name"] in member_names and r.get("guild", "").lower().find(GUILD_NAME.lower()) == -1}
+
+    to_remove = non_bequiet_home | non_bequiet_rank
+
+    updated = (member_names | to_add) - to_remove
+
+    if to_add:
+        print(f"Members add from home or ranking: {', '.join(sorted(to_add, key=str.lower))}")
+    if to_remove:
+        print(f"Members remove lost tag: {', '.join(sorted(to_remove, key=str.lower))}")
+
+    save_members(sorted(updated, key=str.lower))
+    state["last_ranking_sync_date"] = today_str
+    save_state(state)
+    return updated
+
 # ---------- Hourly ----------
 def run_hourly():
     member_names = set(load_members())
@@ -224,13 +313,7 @@ def run_hourly():
     beq_rows = parse_home_bequiet_rows(table)
     currently_online = {row["name"] for row in beq_rows}
 
-    newly_found = sorted(currently_online - member_names, key=str.lower)
-    if newly_found:
-        updated = sorted(member_names | set(newly_found), key=str.lower)
-        save_members(updated)
-        member_names = set(updated)
-        print(f"Added to members list: {', '.join(newly_found)}")
-
+    # Members-Datei im Hourly nicht anfassen
     state = load_state()
     last_seen = state.setdefault("last_seen", {})
     last_status = state.setdefault("last_status", {})
@@ -265,21 +348,20 @@ def build_daily_text(member_names: set[str],
         header += " Test"
 
     lines = []
+    now_ts = int(time.time())
     for name in sorted(all_names, key=sort_key):
         if name in current_online:
             lines.append(f"• **{name}** — currently online and grinding")
         else:
             ts = last_seen.get(name, 0)
             if name in mc_today and ts == 0:
-                # Fallback-Info wenn noch nie gesehen wurde
                 lines.append(f"• **{name}** — seen today via Monstercount")
             elif name in mc_today and ts > 0:
-                # Gesehen über Monstercount, Zeitstempel bereits auf heute gesetzt
-                delta = int(time.time()) - ts
+                delta = now_ts - ts
                 lines.append(f"• **{name}** — seen today via Monstercount ({human_delta(delta)})")
             else:
                 if ts > 0:
-                    delta = int(time.time()) - ts
+                    delta = now_ts - ts
                     lines.append(f"• **{name}** — last seen {fmt_ts_utc(ts)} ({human_delta(delta)})")
                 else:
                     lines.append(f"• **{name}** — no sightings yet")
@@ -301,7 +383,11 @@ def run_daily_summary(update_state_date: bool, test_label: bool):
     names_today = {r["name"] for r in beq_rows}
     current_online = set(names_today)
 
-    # Monstercount lesen
+    # Ranking Sync einmal täglich
+    state = load_state()
+    member_names = sync_members_from_home_and_ranking(member_names, state)
+
+    # Monstercount lesen als Tagesnachweis
     try:
         mc_html = fetch_html(MONSTERCOUNT_URL)
         mc_soup = BeautifulSoup(mc_html, "html.parser")
@@ -311,16 +397,7 @@ def run_daily_summary(update_state_date: bool, test_label: bool):
         print(f"Monstercount fetch/parse error: {e}", file=sys.stderr)
         mc_names = set()
 
-    # Neue Namen, die heute sichtbar sind, in Mitgliederliste aufnehmen
-    newly_found = sorted((current_online | mc_names) - member_names, key=str.lower)
-    if newly_found:
-        updated = sorted(member_names | set(newly_found), key=str.lower)
-        save_members(updated)
-        member_names = set(updated)
-        print(f"Added to members list: {', '.join(newly_found)}")
-
     # State vorbereiten
-    state = load_state()
     last_seen = state.setdefault("last_seen", {})
     last_status = state.setdefault("last_status", {})
 
@@ -335,8 +412,6 @@ def run_daily_summary(update_state_date: bool, test_label: bool):
         last_status[name] = "online"
 
     # Monstercount als Tagesnachweis verwenden
-    # Wenn ein Mitglied heute im Monstercount steht, gilt der Spieler als heute online.
-    # Wir setzen last_seen auf jetzt, falls der bisherige Zeitstempel vor dem heutigen Datum liegt.
     today = now_berlin().date()
     today_midnight_utc = datetime.combine(today, datetime.min.time(), tzinfo=BERLIN).astimezone(timezone.utc).timestamp()
     mc_today = set()
@@ -353,15 +428,14 @@ def run_daily_summary(update_state_date: bool, test_label: bool):
     # Abbruch, wenn täglicher Post bereits gesetzt wurde und wir keinen Test fahren
     today_str = today_berlin_date()
     if update_state_date and state.get("last_daily_date") == today_str:
-        print(f"Daily already posted for {today_str}")
-        # State speichern, da wir evtl. durch Monstercount last_seen aktualisiert haben
         save_state(state)
         return
 
     # Text bauen und posten
-    all_names = set(last_seen.keys()) | names_today | member_names | mc_names
+    all_names = set(last_seen.keys()) | names_today | member_names
     if not all_names:
         post_to_discord("**Netherworld – beQuiet last seen**\nNo members tracked yet.")
+        save_state(state)
         return
 
     content = build_daily_text(member_names, all_names, current_online, last_seen, mc_today, test_label)
@@ -372,13 +446,11 @@ def run_daily_summary(update_state_date: bool, test_label: bool):
             state["last_daily_date"] = today_str
         save_state(state)
     else:
-        print("Daily not posted because webhook missing or Discord rejected the message", file=sys.stderr)
-        # State trotzdem speichern, weil Monstercount-Infos wertvoll sind
         save_state(state)
 
 # ---------- Entry ----------
 def main():
-    print("[DEBUG] bequiet_last_seen.py with CHUNKING + FORCE_POST + MONSTERCOUNT", file=sys.stderr)
+    print("[DEBUG] bequiet_last_seen.py with RANKING SYNC + CHUNKING + FORCE_POST", file=sys.stderr)
 
     if FORCE_POST == "1":
         run_daily_summary(update_state_date=False, test_label=True)
@@ -401,5 +473,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
