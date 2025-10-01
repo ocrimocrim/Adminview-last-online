@@ -16,7 +16,8 @@ MEMBERS_FILE = Path("bequiet_members.txt")
 TIMEOUT = 20
 
 WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
-MODE = os.getenv("MODE", "auto").strip().lower()  # "auto" | "hourly" | "daily"
+MODE = os.getenv("MODE", "auto").strip().lower()  # auto | hourly | daily
+FORCE_POST = os.getenv("FORCE_POST", "").strip()  # "1" bei Testlauf
 
 # ---------- State ----------
 def load_state():
@@ -70,10 +71,6 @@ def post_to_discord(content: str) -> bool:
         return False
 
 def chunk_text(content: str, limit: int = 1900) -> list[str]:
-    """
-    Zerschneidet Text in Blöcke mit maximal limit Zeichen.
-    Schneidet bevorzugt an Zeilenumbrüchen, um mitten im Namen zu vermeiden.
-    """
     if not content:
         return []
     chunks = []
@@ -170,6 +167,62 @@ def fmt_ts_utc(ts: int) -> str:
     dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(BERLIN)
     return dt.strftime("%Y-%m-%d %H:%M")
 
+# ---------- Zusammenstellung ----------
+def build_daily_text(test_label: bool) -> str:
+    member_names = set(load_members())
+
+    html = fetch_html(URL)
+    soup = BeautifulSoup(html, "html.parser")
+    table = find_home_server_table(soup, SERVER_LABEL)
+    if not table:
+        return "**Netherworld – beQuiet last seen**\nTabelle nicht gefunden"
+
+    beq_rows = parse_home_bequiet_rows(table)
+    names_today = {r["name"] for r in beq_rows}
+    current_online = set(names_today)
+
+    newly_found = sorted(current_online - member_names, key=str.lower)
+    if newly_found:
+        updated = sorted(member_names | set(newly_found), key=str.lower)
+        save_members(updated)
+        member_names = set(updated)
+        print(f"Added to members list: {', '.join(newly_found)}")
+
+    state = load_state()
+    last_seen = state.get("last_seen", {})
+    last_status = state.get("last_status", {})
+
+    for name in member_names:
+        last_seen.setdefault(name, 0)
+        last_status.setdefault(name, "offline")
+
+    all_names = set(last_seen.keys()) | names_today | member_names
+    if not all_names:
+        return "**Netherworld – beQuiet last seen**\nNo members tracked yet."
+
+    def sort_key(n):
+        online = 1 if n in current_online else 0
+        return (-online, -last_seen.get(n, 0), n.lower())
+
+    today_berlin = now_berlin().date().isoformat()
+    header = f"**Netherworld – beQuiet last seen** ({today_berlin})"
+    if test_label:
+        header += " Test"
+
+    lines = []
+    for name in sorted(all_names, key=sort_key):
+        if name in current_online:
+            lines.append(f"• **{name}** — currently online and grinding")
+        else:
+            ts = last_seen.get(name, 0)
+            if ts > 0:
+                delta = int(time.time()) - ts
+                lines.append(f"• **{name}** — last seen {fmt_ts_utc(ts)} ({human_delta(delta)})")
+            else:
+                lines.append(f"• **{name}** — no sightings yet")
+
+    return header + "\n" + "\n".join(lines)
+
 # ---------- Logik ----------
 def run_hourly():
     member_names = set(load_members())
@@ -209,42 +262,48 @@ def run_hourly():
 
     save_state(state)
 
-def run_daily_summary():
-    member_names = set(load_members())
-
-    html = fetch_html(URL)
-    soup = BeautifulSoup(html, "html.parser")
-    table = find_home_server_table(soup, SERVER_LABEL)
-    if not table:
-        print("Netherworld table not found on homepage", file=sys.stderr)
-        return
-
-    beq_rows = parse_home_bequiet_rows(table)
-    names_today = {r["name"] for r in beq_rows}
-    current_online = set(names_today)
-
-    newly_found = sorted(current_online - member_names, key=str.lower)
-    if newly_found:
-        updated = sorted(member_names | set(newly_found), key=str.lower)
-        save_members(updated)
-        member_names = set(updated)
-        print(f"Added to members list: {', '.join(newly_found)}")
-
+def run_daily_summary(update_state_date: bool, test_label: bool):
     state = load_state()
-    last_seen = state.get("last_seen", {})
-    last_status = state.get("last_status", {})
+    today_berlin = now_berlin().date().isoformat()
 
-    for name in member_names:
-        last_seen.setdefault(name, 0)
-        last_status.setdefault(name, "offline")
-
-    all_names = set(last_seen.keys()) | names_today | member_names
-    if not all_names:
-        post_to_discord("**Netherworld – beQuiet last seen**\nNo members tracked yet.")
+    if update_state_date and state.get("last_daily_date") == today_berlin:
+        print(f"Daily already posted for {today_berlin}")
         return
 
-    def sort_key(n):
-        online = 1 if n in current_online else 0
-        return (-online, -last_seen.get(n, 0), n.lower())
+    content = build_daily_text(test_label=test_label)
+    print(f"[DEBUG] total_length={len(content)}", file=sys.stderr)
+    if post_long_to_discord(content, limit=1900, with_counters=True):
+        if update_state_date:
+            state["last_daily_date"] = today_berlin
+            save_state(state)
+    else:
+        print("Daily not marked as posted because Discord rejected the message", file=sys.stderr)
 
-    today_berlin = n_
+def main():
+    print("[DEBUG] bequiet_last_seen.py with CHUNKING and FORCE_POST support", file=sys.stderr)
+
+    # Forcierter Testpost unabhängig von MODE und Uhrzeit
+    if FORCE_POST == "1":
+        run_daily_summary(update_state_date=False, test_label=True)
+        return
+
+    if MODE == "hourly":
+        run_hourly()
+        return
+    if MODE == "daily":
+        run_daily_summary(update_state_date=True, test_label=False)
+        return
+
+    # Auto
+    now_b = now_berlin()
+    if is_berlin_daily_window(now_b):
+        run_daily_summary(update_state_date=True, test_label=False)
+    else:
+        run_hourly()
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
