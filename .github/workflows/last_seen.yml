@@ -12,7 +12,7 @@ jobs:
     permissions:
       contents: write
     env:
-      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL_LASTSEEN }}
       MODE: auto
       FORCE_POST: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
     steps:
@@ -44,7 +44,7 @@ jobs:
       - name: Check webhook presence
         run: |
           if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
-            echo "Webhook fehlt. Secret DISCORD_WEBHOOK_URL nicht gesetzt."
+            echo "Webhook fehlt. Secret DISCORD_WEBHOOK_URL_LASTSEEN nicht gesetzt."
             exit 1
           else
             echo "::add-mask::${DISCORD_WEBHOOK_URL}"
