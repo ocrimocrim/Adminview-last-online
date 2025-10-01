@@ -52,7 +52,7 @@ def save_members(names: list[str]):
 # ---------- Discord ----------
 def post_to_discord(content: str) -> bool:
     if not WEBHOOK:
-        print("No DISCORD_WEBHOOK_URL set; skip posting", file=sys.stderr)
+        print("Skipping post because DISCORD_WEBHOOK_URL is not set", file=sys.stderr)
         return False
     if len(content) > 2000:
         print(f"Discord payload blocked locally length={len(content)}", file=sys.stderr)
@@ -91,6 +91,9 @@ def chunk_text(content: str, limit: int = 1900) -> list[str]:
     return chunks
 
 def post_long_to_discord(content: str, limit: int = 1900, with_counters: bool = True) -> bool:
+    if not WEBHOOK:
+        print("Skipping post because DISCORD_WEBHOOK_URL is not set", file=sys.stderr)
+        return False
     chunks = chunk_text(content, limit=limit)
     if not chunks:
         return False
@@ -251,12 +254,9 @@ def run_hourly():
 
     for name in member_names:
         last_seen.setdefault(name, 0)
-        last_status.setdefault(name, "offline")
-
     for name in currently_online:
         last_seen[name] = now_ts
         last_status[name] = "online"
-
     for name in member_names - currently_online:
         last_status[name] = "offline"
 
@@ -277,12 +277,11 @@ def run_daily_summary(update_state_date: bool, test_label: bool):
             state["last_daily_date"] = today_berlin
             save_state(state)
     else:
-        print("Daily not marked as posted because Discord rejected the message", file=sys.stderr)
+        print("Daily not posted because webhook missing or Discord rejected the message", file=sys.stderr)
 
 def main():
     print("[DEBUG] bequiet_last_seen.py with CHUNKING and FORCE_POST support", file=sys.stderr)
 
-    # Forcierter Testpost unabhängig von MODE und Uhrzeit
     if FORCE_POST == "1":
         run_daily_summary(update_state_date=False, test_label=True)
         return
@@ -294,7 +293,6 @@ def main():
         run_daily_summary(update_state_date=True, test_label=False)
         return
 
-    # Auto
     now_b = now_berlin()
     if is_berlin_daily_window(now_b):
         run_daily_summary(update_state_date=True, test_label=False)
