@@ -4,7 +4,7 @@ on:
   push:
   workflow_dispatch:
   schedule:
-    - cron: "*/60 * * * *"
+    - cron: "0 * * * *"
 
 jobs:
   run:
@@ -14,6 +14,8 @@ jobs:
     env:
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
       MODE: auto
+      # Bei manuellem Trigger setzt Actions diese Variable auf 1
+      FORCE_POST: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,9 +31,16 @@ jobs:
       - name: Show script header
         run: |
           echo "=== bequiet_last_seen.py HEAD ==="
-          sed -n '1,80p' bequiet_last_seen.py
+          sed -n '1,120p' bequiet_last_seen.py
           echo "=== grep chunk signatures ==="
-          grep -n "post_long_to_discord\|chunk_text" bequiet_last_seen.py || true
+          grep -n "post_long_to_discord\|chunk_text\|FORCE_POST" bequiet_last_seen.py || true
+          echo "Jetzt in Berlin"
+          python - << 'PY'
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          print(datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M"))
+          PY
+          echo "MODE=${MODE} FORCE_POST=${FORCE_POST}"
 
       - name: Run script
         run: python bequiet_last_seen.py
