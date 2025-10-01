@@ -45,21 +45,49 @@ def load_members() -> list[str]:
             uniq.append(n)
     return uniq
 
-def save_members(names: list[str]) -> None:
-    # sortiert und ohne Duplikate speichern
+def save_members(names: list[str]):
     uniq_sorted = sorted(set(n.strip() for n in names if n.strip()), key=str.lower)
     MEMBERS_FILE.write_text("\n".join(uniq_sorted) + ("\n" if uniq_sorted else ""), encoding="utf-8")
 
 # ---------- Discord ----------
-def post_to_discord(content: str):
+def post_to_discord(content: str) -> bool:
     if not WEBHOOK:
         print("No DISCORD_WEBHOOK_URL set; skip posting", file=sys.stderr)
-        return
-    r = requests.post(WEBHOOK, json={"content": content}, timeout=15)
+        return False
     try:
+        r = requests.post(WEBHOOK, json={"content": content}, timeout=15)
         r.raise_for_status()
+        return True
     except Exception as e:
-        print(f"Discord error: {e} {getattr(r, 'text', '')}", file=sys.stderr)
+        resp_txt = ""
+        try:
+            resp_txt = r.text  # type: ignore[name-defined]
+        except Exception:
+            pass
+        print(f"Discord error: {e} {resp_txt}", file=sys.stderr)
+        return False
+
+# Chunked posting helper for Discord hard limit 2000 chars
+def post_long_to_discord(content: str, limit: int = 1900) -> bool:
+    if content is None:
+        return False
+    # splitte an Zeilenumbrüchen wenn möglich
+    chunks = []
+    remaining = content
+    while remaining:
+        chunk = remaining[:limit]
+        cut = chunk.rfind("\n")
+        if cut != -1 and cut >= int(limit * 0.6):
+            chunk = chunk[:cut]
+            next_index = cut + 1
+        else:
+            next_index = len(chunk)
+        chunks.append(chunk)
+        remaining = remaining[next_index:]
+    ok = True
+    for c in chunks:
+        ok = post_to_discord(c) and ok
+    return ok
 
 # ---------- Zeit ----------
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -95,44 +123,43 @@ def find_home_server_table(soup: BeautifulSoup, server_label: str):
 
 def parse_home_bequiet_rows(table) -> list[dict]:
     """
-    Spaltenfolge auf der Startseite:
-      # | Name | Level | Job | Guild
-    In 'Guild' steht ggf. ein <img> und danach der Gildenname als Text.
-    Jedes aufgeführte Zeilen-Item gilt hier als *aktuell online*.
+    Tabelle enthält Zeilen mit Namen und Gilde. Wir filtern auf Gilde beQuiet.
     """
-    res = []
+    rows = []
     tbody = table.find("tbody")
     if not tbody:
-        return res
+        return rows
     for tr in tbody.find_all("tr"):
-        tds = tr.find_all(["td", "th"])
-        if len(tds) < 5:
+        tds = tr.find_all("td")
+        if len(tds) < 2:
             continue
-        name = tds[1].get_text(strip=True)
-        guild_txt = tds[4].get_text(" ", strip=True)
+        name = tds[0].get_text(strip=True)
+        guild = tds[1].get_text(strip=True)
         if not name:
             continue
-        if GUILD_NAME.lower() in guild_txt.lower():
-            res.append({"name": name, "online": True})
-    return res
+        if guild and GUILD_NAME.lower() in guild.lower():
+            rows.append({"name": name})
+    return rows
 
-# ---------- Format ----------
+# ---------- Formatierung ----------
 def human_delta(seconds: int) -> str:
-    if seconds < 90:
-        return f"{seconds}s ago"
-    minutes = seconds // 60
-    if minutes < 90:
-        return f"{minutes}m ago"
-    hours = minutes // 60
-    if hours < 48:
-        return f"{hours}h ago"
-    days = hours // 24
-    return f"{days}d ago"
+    # grobe menschenlesbare Dauer
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    if d > 0:
+        return f"{d}d {h}h"
+    if h > 0:
+        return f"{h}h {m}m"
+    if m > 0:
+        return f"{m}m"
+    return f"{s}s"
 
 def fmt_ts_utc(ts: int) -> str:
-    return time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(ts))
+    dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(BERLIN)
+    return dt.strftime("%Y-%m-%d %H:%M")
 
-# ---------- Flows ----------
+# ---------- Logik ----------
 def run_hourly():
     """
     - Website laden und aktuell online befindliche beQuiet-Spieler ermitteln
@@ -173,20 +200,20 @@ def run_hourly():
         last_seen.setdefault(name, 0)
         last_status.setdefault(name, "offline")
 
-    # Online gesetzte Namen aktualisieren
+    # Setze Status und last_seen für aktuell Online
     for name in currently_online:
         last_seen[name] = now_ts
         last_status[name] = "online"
 
-    # Alle anderen bekannten Namen offline setzen
-    for name in set(last_status.keys()) - currently_online:
+    # Alle nicht gesehenen auf offline setzen
+    for name in member_names - currently_online:
         last_status[name] = "offline"
 
     save_state(state)
 
 def run_daily_summary():
     """
-    - Am Tagesende Übersicht posten:
+    - Am Tagesende Übersicht posten
       * online jetzt
       * sonst letzter bekannter Zeitpunkt aus State
       * zusätzlich alle Namen aus der Mitgliederliste, damit niemand fehlt
@@ -205,7 +232,7 @@ def run_daily_summary():
     names_today = {r["name"] for r in beq_rows}
     current_online = set(names_today)
 
-    # Mitgliederliste mit neu erkannten Namen ergänzen (falls Daily ohne Hourly davor läuft)
+    # Mitgliederliste mit neu erkannten Namen ergänzen
     newly_found = sorted(current_online - member_names, key=str.lower)
     if newly_found:
         updated = sorted(member_names | set(newly_found), key=str.lower)
@@ -222,7 +249,7 @@ def run_daily_summary():
         last_seen.setdefault(name, 0)
         last_status.setdefault(name, "offline")
 
-    # Gesamtnamen: historische + heute + Mitgliederliste
+    # Gesamtnamen
     all_names = set(last_seen.keys()) | names_today | member_names
     if not all_names:
         post_to_discord("**Netherworld – beQuiet last seen**\nNo members tracked yet.")
@@ -250,11 +277,12 @@ def run_daily_summary():
             else:
                 lines.append(f"• **{name}** — no sightings yet")
 
-    content = header + "\n" + "\n".join(lines[:1900])
-    post_to_discord(content)
-
-    state["last_daily_date"] = today_berlin
-    save_state(state)
+    content = header + "\n" + "\n".join(lines)
+    if post_long_to_discord(content):
+        state["last_daily_date"] = today_berlin
+        save_state(state)
+    else:
+        print("Daily not marked as posted because Discord rejected the message", file=sys.stderr)
 
 def main():
     if MODE == "hourly":
@@ -264,7 +292,7 @@ def main():
         run_daily_summary()
         return
 
-    # AUTO Modus: Daily im Fenster, sonst Hourly
+    # AUTO Modus Daily im Fenster, sonst Hourly
     now_b = now_berlin()
     if is_berlin_daily_window(now_b):
         run_daily_summary()
