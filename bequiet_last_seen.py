@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 # ---------- Konfiguration ----------
 URL = "https://pr-underworld.com/website/"
+MONSTERCOUNT_URL = "https://pr-underworld.com/website/monstercount/"
 GUILD_NAME = "beQuiet"
 SERVER_LABEL = "Netherworld"
 
@@ -15,7 +16,8 @@ STATE_FILE   = Path("state_last_seen.json")
 MEMBERS_FILE = Path("bequiet_members.txt")
 TIMEOUT = 20
 
-WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+# Webhook-Varianten akzeptieren
+WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL", os.getenv("DISCORD_WEBHOOK_URL_LASTSEEN", "")).strip()
 MODE = os.getenv("MODE", "auto").strip().lower()  # auto | hourly | daily
 FORCE_POST = os.getenv("FORCE_POST", "").strip()  # "1" bei Testlauf
 
@@ -118,15 +120,20 @@ def now_utc():
 def now_berlin():
     return now_utc().astimezone(BERLIN)
 
+def today_berlin_date():
+    return now_berlin().date().isoformat()
+
 def is_berlin_daily_window(dt: datetime) -> bool:
+    # Daily zwischen 23:20 und 23:59 Europe/Berlin
     return dt.hour == 23 and 20 <= dt.minute <= 59
 
-# ---------- Scraping ----------
+# ---------- HTTP ----------
 def fetch_html(url: str) -> str:
     r = requests.get(url, headers={"User-Agent": "beQuiet last-seen tracker"}, timeout=TIMEOUT)
     r.raise_for_status()
     return r.text
 
+# ---------- Parsing: Homepage Online-Liste ----------
 def find_home_server_table(soup: BeautifulSoup, server_label: str):
     for h in soup.find_all(["h3", "h4", "h5", "h6"]):
         heading = h.get_text(strip=True)
@@ -153,6 +160,39 @@ def parse_home_bequiet_rows(table) -> list[dict]:
             rows.append({"name": name})
     return rows
 
+# ---------- Parsing: Monstercount ----------
+def find_monstercount_table(soup: BeautifulSoup, server_label: str):
+    """
+    Auf der Seite stehen zwei Blöcke mit h4-Überschriften.
+    Unter der Überschrift folgt eine Tabelle. Wir wählen die mit 'Netherworld'.
+    """
+    for h in soup.find_all(["h3", "h4", "h5", "h6"]):
+        heading = h.get_text(strip=True)
+        if heading and server_label.lower() in heading.lower():
+            tbl = h.find_next("table")
+            if tbl and tbl.find("tbody"):
+                return tbl
+    return None
+
+def parse_monstercount_names(table) -> list[str]:
+    """
+    tbody -> tr
+      th scope=row  ignorieren
+      td[0] = Name
+      td[1] = Zahl
+    """
+    names = []
+    tbody = table.find("tbody")
+    if not tbody:
+        return names
+    for tr in tbody.find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) >= 1:
+            name = tds[0].get_text(strip=True)
+            if name:
+                names.append(name)
+    return names
+
 # ---------- Formatierung ----------
 def human_delta(seconds: int) -> str:
     m, s = divmod(seconds, 60)
@@ -170,63 +210,7 @@ def fmt_ts_utc(ts: int) -> str:
     dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(BERLIN)
     return dt.strftime("%Y-%m-%d %H:%M")
 
-# ---------- Zusammenstellung ----------
-def build_daily_text(test_label: bool) -> str:
-    member_names = set(load_members())
-
-    html = fetch_html(URL)
-    soup = BeautifulSoup(html, "html.parser")
-    table = find_home_server_table(soup, SERVER_LABEL)
-    if not table:
-        return "**Netherworld – beQuiet last seen**\nTabelle nicht gefunden"
-
-    beq_rows = parse_home_bequiet_rows(table)
-    names_today = {r["name"] for r in beq_rows}
-    current_online = set(names_today)
-
-    newly_found = sorted(current_online - member_names, key=str.lower)
-    if newly_found:
-        updated = sorted(member_names | set(newly_found), key=str.lower)
-        save_members(updated)
-        member_names = set(updated)
-        print(f"Added to members list: {', '.join(newly_found)}")
-
-    state = load_state()
-    last_seen = state.get("last_seen", {})
-    last_status = state.get("last_status", {})
-
-    for name in member_names:
-        last_seen.setdefault(name, 0)
-        last_status.setdefault(name, "offline")
-
-    all_names = set(last_seen.keys()) | names_today | member_names
-    if not all_names:
-        return "**Netherworld – beQuiet last seen**\nNo members tracked yet."
-
-    def sort_key(n):
-        online = 1 if n in current_online else 0
-        return (-online, -last_seen.get(n, 0), n.lower())
-
-    today_berlin = now_berlin().date().isoformat()
-    header = f"**Netherworld – beQuiet last seen** ({today_berlin})"
-    if test_label:
-        header += " Test"
-
-    lines = []
-    for name in sorted(all_names, key=sort_key):
-        if name in current_online:
-            lines.append(f"• **{name}** — currently online and grinding")
-        else:
-            ts = last_seen.get(name, 0)
-            if ts > 0:
-                delta = int(time.time()) - ts
-                lines.append(f"• **{name}** — last seen {fmt_ts_utc(ts)} ({human_delta(delta)})")
-            else:
-                lines.append(f"• **{name}** — no sightings yet")
-
-    return header + "\n" + "\n".join(lines)
-
-# ---------- Logik ----------
+# ---------- Hourly ----------
 def run_hourly():
     member_names = set(load_members())
 
@@ -254,33 +238,147 @@ def run_hourly():
 
     for name in member_names:
         last_seen.setdefault(name, 0)
+        last_status.setdefault(name, "offline")
+
     for name in currently_online:
         last_seen[name] = now_ts
         last_status[name] = "online"
+
     for name in member_names - currently_online:
         last_status[name] = "offline"
 
     save_state(state)
 
-def run_daily_summary(update_state_date: bool, test_label: bool):
-    state = load_state()
-    today_berlin = now_berlin().date().isoformat()
+# ---------- Daily + Monstercount ----------
+def build_daily_text(member_names: set[str],
+                     all_names: set[str],
+                     current_online: set[str],
+                     last_seen: dict[str, int],
+                     mc_today: set[str],
+                     test_label: bool) -> str:
+    def sort_key(n):
+        online = 1 if n in current_online else 0
+        return (-online, -last_seen.get(n, 0), n.lower())
 
-    if update_state_date and state.get("last_daily_date") == today_berlin:
-        print(f"Daily already posted for {today_berlin}")
+    header = f"**Netherworld – beQuiet last seen** ({today_berlin_date()})"
+    if test_label:
+        header += " Test"
+
+    lines = []
+    for name in sorted(all_names, key=sort_key):
+        if name in current_online:
+            lines.append(f"• **{name}** — currently online and grinding")
+        else:
+            ts = last_seen.get(name, 0)
+            if name in mc_today and ts == 0:
+                # Fallback-Info wenn noch nie gesehen wurde
+                lines.append(f"• **{name}** — seen today via Monstercount")
+            elif name in mc_today and ts > 0:
+                # Gesehen über Monstercount, Zeitstempel bereits auf heute gesetzt
+                delta = int(time.time()) - ts
+                lines.append(f"• **{name}** — seen today via Monstercount ({human_delta(delta)})")
+            else:
+                if ts > 0:
+                    delta = int(time.time()) - ts
+                    lines.append(f"• **{name}** — last seen {fmt_ts_utc(ts)} ({human_delta(delta)})")
+                else:
+                    lines.append(f"• **{name}** — no sightings yet")
+
+    return header + "\n" + "\n".join(lines)
+
+def run_daily_summary(update_state_date: bool, test_label: bool):
+    # Mitglieder laden
+    member_names = set(load_members())
+
+    # Homepage lesen
+    html = fetch_html(URL)
+    soup = BeautifulSoup(html, "html.parser")
+    table = find_home_server_table(soup, SERVER_LABEL)
+    if not table:
+        print("Netherworld table not found on homepage", file=sys.stderr)
+        return
+    beq_rows = parse_home_bequiet_rows(table)
+    names_today = {r["name"] for r in beq_rows}
+    current_online = set(names_today)
+
+    # Monstercount lesen
+    try:
+        mc_html = fetch_html(MONSTERCOUNT_URL)
+        mc_soup = BeautifulSoup(mc_html, "html.parser")
+        mc_table = find_monstercount_table(mc_soup, SERVER_LABEL)
+        mc_names = set(parse_monstercount_names(mc_table)) if mc_table else set()
+    except Exception as e:
+        print(f"Monstercount fetch/parse error: {e}", file=sys.stderr)
+        mc_names = set()
+
+    # Neue Namen, die heute sichtbar sind, in Mitgliederliste aufnehmen
+    newly_found = sorted((current_online | mc_names) - member_names, key=str.lower)
+    if newly_found:
+        updated = sorted(member_names | set(newly_found), key=str.lower)
+        save_members(updated)
+        member_names = set(updated)
+        print(f"Added to members list: {', '.join(newly_found)}")
+
+    # State vorbereiten
+    state = load_state()
+    last_seen = state.setdefault("last_seen", {})
+    last_status = state.setdefault("last_status", {})
+
+    for name in member_names:
+        last_seen.setdefault(name, 0)
+        last_status.setdefault(name, "offline")
+
+    # Online jetzt markieren
+    now_ts = int(time.time())
+    for name in current_online:
+        last_seen[name] = now_ts
+        last_status[name] = "online"
+
+    # Monstercount als Tagesnachweis verwenden
+    # Wenn ein Mitglied heute im Monstercount steht, gilt der Spieler als heute online.
+    # Wir setzen last_seen auf jetzt, falls der bisherige Zeitstempel vor dem heutigen Datum liegt.
+    today = now_berlin().date()
+    today_midnight_utc = datetime.combine(today, datetime.min.time(), tzinfo=BERLIN).astimezone(timezone.utc).timestamp()
+    mc_today = set()
+    for name in (member_names & mc_names):
+        ts = last_seen.get(name, 0)
+        if ts < int(today_midnight_utc):
+            last_seen[name] = now_ts
+        mc_today.add(name)
+
+    # Alle nicht-aktuellen auf offline
+    for name in member_names - current_online:
+        last_status[name] = "offline"
+
+    # Abbruch, wenn täglicher Post bereits gesetzt wurde und wir keinen Test fahren
+    today_str = today_berlin_date()
+    if update_state_date and state.get("last_daily_date") == today_str:
+        print(f"Daily already posted for {today_str}")
+        # State speichern, da wir evtl. durch Monstercount last_seen aktualisiert haben
+        save_state(state)
         return
 
-    content = build_daily_text(test_label=test_label)
-    print(f"[DEBUG] total_length={len(content)}", file=sys.stderr)
+    # Text bauen und posten
+    all_names = set(last_seen.keys()) | names_today | member_names | mc_names
+    if not all_names:
+        post_to_discord("**Netherworld – beQuiet last seen**\nNo members tracked yet.")
+        return
+
+    content = build_daily_text(member_names, all_names, current_online, last_seen, mc_today, test_label)
+    print(f"[DEBUG] total_length={len(content)}  mc_today={len(mc_today)}", file=sys.stderr)
+
     if post_long_to_discord(content, limit=1900, with_counters=True):
         if update_state_date:
-            state["last_daily_date"] = today_berlin
-            save_state(state)
+            state["last_daily_date"] = today_str
+        save_state(state)
     else:
         print("Daily not posted because webhook missing or Discord rejected the message", file=sys.stderr)
+        # State trotzdem speichern, weil Monstercount-Infos wertvoll sind
+        save_state(state)
 
+# ---------- Entry ----------
 def main():
-    print("[DEBUG] bequiet_last_seen.py with CHUNKING and FORCE_POST support", file=sys.stderr)
+    print("[DEBUG] bequiet_last_seen.py with CHUNKING + FORCE_POST + MONSTERCOUNT", file=sys.stderr)
 
     if FORCE_POST == "1":
         run_daily_summary(update_state_date=False, test_label=True)
