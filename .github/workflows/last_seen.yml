@@ -1,64 +1,30 @@
-name: run
+name: beQuiet last seen
 
 on:
-  push:
-  workflow_dispatch:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "0 * * * *"        # stündlich UTC
+  workflow_dispatch:
 
 jobs:
-  run:
+  run-tracker:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     env:
-      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL_LASTSEEN }}
+      TZ: Europe/Berlin
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
       MODE: auto
-      FORCE_POST: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install requests beautifulsoup4
 
-      - name: Show script header
-        run: |
-          echo "=== bequiet_last_seen.py HEAD ==="
-          sed -n '1,160p' bequiet_last_seen.py
-          echo "=== grep features ==="
-          grep -n "MONSTERCOUNT_URL\|post_long_to_discord\|FORCE_POST" bequiet_last_seen.py || true
-          echo "Jetzt in Berlin"
-          python - << 'PY'
-          from datetime import datetime
-          from zoneinfo import ZoneInfo
-          print(datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M"))
-          PY
-          echo "MODE=${MODE} FORCE_POST=${FORCE_POST}"
-
-      - name: Check webhook presence
-        run: |
-          if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
-            echo "Webhook fehlt. Secret DISCORD_WEBHOOK_URL_LASTSEEN nicht gesetzt."
-            exit 1
-          else
-            echo "::add-mask::${DISCORD_WEBHOOK_URL}"
-            echo "Webhook gefunden"
-          fi
-
-      - name: Run script
+      - name: Run tracker
         run: python bequiet_last_seen.py
-
-      - name: Commit state
-        if: ${{ hashFiles('state_last_seen.json') != '' }}
-        run: |
-          git config user.name github-actions
-          git config user.email actions@github.com
-          git add state_last_seen.json || true
-          git commit -m "Update last-seen state" || echo "nothing to commit"
-          git push
