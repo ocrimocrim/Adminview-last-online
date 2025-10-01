@@ -1,48 +1,46 @@
-name: beQuiet Last Seen
+name: run
 
 on:
-  schedule:
-    - cron: "49 21 * * *"    # 23:49 Deutschland im SOMMER (MESZ = UTC+2)
-    - cron: "49 22 * * *"    # 23:49 Deutschland im WINTER (MEZ = UTC+1)
+  push:
   workflow_dispatch:
-
-permissions:
-  contents: write
-
-concurrency:
-  group: last-seen-tracker
-  cancel-in-progress: true
+  schedule:
+    - cron: "*/60 * * * *"
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      MODE: auto
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      # Ein einzelner Script-Run im AUTO Modus.
-      # Das Script postet im Fenster 23:20 bis 23:59 Europe/Berlin genau einmal pro Tag.
-      - name: Run tracker
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL_LASTSEEN }}
-          MODE: "auto"
+      - name: Show script header
+        run: |
+          echo "=== bequiet_last_seen.py HEAD ==="
+          sed -n '1,80p' bequiet_last_seen.py
+          echo "=== grep chunk signatures ==="
+          grep -n "post_long_to_discord\|chunk_text" bequiet_last_seen.py || true
+
+      - name: Run script
         run: python bequiet_last_seen.py
 
-      - name: Commit state if changed
+      - name: Commit state
+        if: ${{ hashFiles('state_last_seen.json') != '' }}
         run: |
-          if [ -f state_last_seen.json ]; then
-            git config user.name  "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add state_last_seen.json || true
-            git diff --staged --quiet || git commit -m "Update last-seen state"
-            git push
-          fi
+          git config user.name github-actions
+          git config user.email actions@github.com
+          git add state_last_seen.json || true
+          git commit -m "Update last-seen state" || echo "nothing to commit"
+          git push
