@@ -30,9 +30,9 @@ jobs:
       - name: Show script header
         run: |
           echo "=== bequiet_last_seen.py HEAD ==="
-          sed -n '1,140p' bequiet_last_seen.py
-          echo "=== grep chunk and flags ==="
-          grep -n "post_long_to_discord\|chunk_text\|FORCE_POST" bequiet_last_seen.py || true
+          sed -n '1,160p' bequiet_last_seen.py
+          echo "=== grep features ==="
+          grep -n "MONSTERCOUNT_URL\|post_long_to_discord\|FORCE_POST" bequiet_last_seen.py || true
           echo "Jetzt in Berlin"
           python - << 'PY'
           from datetime import datetime
