@@ -10,8 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: Europe/Berlin
-      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      # hier binden wir DEIN Secret ein:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL_LASTSEEN }}
       MODE: auto
+      # Bei manuellem Run sofort posten:
       FORCE_POST: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
     steps:
       - name: Checkout
@@ -37,6 +39,15 @@ jobs:
           print("MODE =", os.getenv("MODE"))
           print("FORCE_POST =", os.getenv("FORCE_POST"))
           PY
+
+      - name: Check webhook presence (no leak)
+        run: |
+          if [ -n "${DISCORD_WEBHOOK_URL}" ]; then
+            echo "DISCORD_WEBHOOK_URL: SET"
+          else
+            echo "DISCORD_WEBHOOK_URL: MISSING"
+            exit 1
+          fi
 
       - name: Run tracker
         run: python bequiet_last_seen.py
