@@ -17,7 +17,8 @@ STATE_FILE   = Path("state_last_seen.json")
 MEMBERS_FILE = Path("bequiet_members.txt")
 TIMEOUT = 20
 
-WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+# <- liest dein Secret; plus Fallback auf den alten Namen
+WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL", os.getenv("DISCORD_WEBHOOK_URL_LASTSEEN", "")).strip()
 MODE = os.getenv("MODE", "auto").strip().lower()  # auto | hourly | daily
 FORCE_POST = os.getenv("FORCE_POST", "").strip()  # "1" = Testlauf mit Post
 
@@ -68,7 +69,12 @@ def post_to_discord(content: str) -> bool:
         r.raise_for_status()
         return True
     except Exception as e:
-        print(f"Discord error: {e}", file=sys.stderr)
+        txt = ""
+        try:
+            txt = r.text  # type: ignore[name-defined]
+        except Exception:
+            pass
+        print(f"Discord error: {e} {txt}", file=sys.stderr)
         return False
 
 def chunk_text(content: str, limit: int = 1900) -> list[str]:
@@ -127,12 +133,17 @@ def find_table_under_heading(soup, needle: str):
 # Homepage
 def parse_home_rows(table):
     rows = []
-    for tr in table.find("tbody").find_all("tr"):
+    tbody = table.find("tbody")
+    if not tbody:
+        return rows
+    for tr in tbody.find_all("tr"):
         tds = tr.find_all("td")
-        if not tds: continue
+        if not tds:
+            continue
         name = tds[0].get_text(strip=True)
         guild = tds[-1].get_text(strip=True) if len(tds) >= 2 else ""
-        if name: rows.append({"name": name, "guild": guild})
+        if name:
+            rows.append({"name": name, "guild": guild})
     return rows
 
 def parse_home_bequiet_rows(table):
@@ -141,22 +152,30 @@ def parse_home_bequiet_rows(table):
 # Ranking
 def parse_ranking_netherworld_rows(table):
     rows = []
-    for tr in table.find("tbody").find_all("tr"):
+    tbody = table.find("tbody")
+    if not tbody:
+        return rows
+    for tr in tbody.find_all("tr"):
         tds = tr.find_all("td")
         if len(tds) >= 6:
-            name = tds[1].get_text(strip=True)
-            guild = tds[5].get_text(strip=True)
-            if name: rows.append({"name": name, "guild": guild})
+            name = tds[1].get_text(strip=True)   # Name
+            guild = tds[5].get_text(strip=True)  # Guild
+            if name:
+                rows.append({"name": name, "guild": guild})
     return rows
 
 # Monstercount
 def parse_monstercount_names(table):
     out = []
-    for tr in table.find("tbody").find_all("tr"):
+    tbody = table.find("tbody")
+    if not tbody:
+        return out
+    for tr in tbody.find_all("tr"):
         tds = tr.find_all("td")
         if len(tds) >= 1:
             n = tds[0].get_text(strip=True)
-            if n: out.append(n)
+            if n:
+                out.append(n)
     return out
 
 # ---------- Format ----------
@@ -167,48 +186,76 @@ def human_delta(sec):
     if m>0: return f"{m}m"
     return f"{s}s"
 
-def fmt_ts_utc(ts): 
+def fmt_ts_utc(ts):
     return datetime.fromtimestamp(ts,tz=timezone.utc).astimezone(BERLIN).strftime("%Y-%m-%d %H:%M")
 
-# ---------- Sync ----------
+# ---------- Sync Homepage & Ranking (täglich) ----------
 def sync_members_from_home_and_ranking(members:set[str], state:dict)->set[str]:
     today=today_berlin_date()
-    if state.get("last_ranking_sync_date")==today: return members
+    if state.get("last_ranking_sync_date")==today:
+        return members
+
     # Homepage
-    home_html=fetch_html(URL); home_soup=BeautifulSoup(home_html,"html.parser")
+    home_html=fetch_html(URL)
+    home_soup=BeautifulSoup(home_html,"html.parser")
     home_tbl=find_table_under_heading(home_soup,SERVER_LABEL.lower())
     home_rows=parse_home_rows(home_tbl) if home_tbl else []
+
     # Ranking
     try:
-        r_html=fetch_html(RANKING_URL); r_soup=BeautifulSoup(r_html,"html.parser")
+        r_html=fetch_html(RANKING_URL)
+        r_soup=BeautifulSoup(r_html,"html.parser")
         r_tbl=find_table_under_heading(r_soup,"netherworld")
         r_rows=parse_ranking_netherworld_rows(r_tbl) if r_tbl else []
     except Exception as e:
-        print(f"Ranking fetch error {e}",file=sys.stderr); r_rows=[]
+        print(f"Ranking fetch error {e}",file=sys.stderr)
+        r_rows=[]
+
     beq_home={r["name"] for r in home_rows if GUILD_NAME.lower() in r["guild"].lower()}
     beq_rank={r["name"] for r in r_rows if GUILD_NAME.lower() in r["guild"].lower()}
     to_add=(beq_home|beq_rank)-members
-    to_remove={r["name"] for r in home_rows+r_rows if r["name"] in members and GUILD_NAME.lower() not in r["guild"].lower() and r["guild"]}
+    to_remove={r["name"] for r in home_rows+r_rows
+               if r["name"] in members and r["guild"] and GUILD_NAME.lower() not in r["guild"].lower()}
+
     updated=(members|to_add)-to_remove
     if to_add: print("Add:",", ".join(sorted(to_add)))
     if to_remove: print("Remove:",", ".join(sorted(to_remove)))
+
     save_members(sorted(updated))
-    state["last_ranking_sync_date"]=today; save_state(state)
+    state["last_ranking_sync_date"]=today
+    save_state(state)
     return updated
 
 # ---------- Hourly ----------
 def run_hourly():
     members=set(load_members())
-    html=fetch_html(URL); soup=BeautifulSoup(html,"html.parser")
+
+    html=fetch_html(URL)
+    soup=BeautifulSoup(html,"html.parser")
     tbl=find_table_under_heading(soup,SERVER_LABEL.lower())
-    if not tbl: return
+    if not tbl:
+        print("Netherworld table not found on homepage", file=sys.stderr)
+        return
+
     beq=parse_home_bequiet_rows(tbl)
     online={r["name"] for r in beq}
-    state=load_state(); last_seen=state.setdefault("last_seen",{}); last_status=state.setdefault("last_status",{})
+
+    state=load_state()
+    last_seen=state.setdefault("last_seen",{})
+    last_status=state.setdefault("last_status",{})
     now_ts=int(time.time())
-    for n in members: last_seen.setdefault(n,0); last_status.setdefault(n,"offline")
-    for n in online: last_seen[n]=now_ts; last_status[n]="online"
-    for n in members-online: last_status[n]="offline"
+
+    for n in members:
+        last_seen.setdefault(n,0)
+        last_status.setdefault(n,"offline")
+
+    for n in online:
+        last_seen[n]=now_ts
+        last_status[n]="online"
+
+    for n in members-online:
+        last_status[n]="offline"
+
     save_state(state)
 
 # ---------- Daily ----------
@@ -218,58 +265,117 @@ def build_daily_text(members,all_names,online,last_seen,mc_today,test):
     now_ts=int(time.time())
     lines=[]
     for n in sorted(all_names,key=lambda x:(-int(x in online),-last_seen.get(x,0),x.lower())):
-        if n in online: lines.append(f"• **{n}** — currently online and grinding")
+        if n in online:
+            lines.append(f"• **{n}** — currently online and grinding")
         else:
             ts=last_seen.get(n,0)
-            if n in mc_today and ts==0: lines.append(f"• **{n}** — seen today via Monstercount")
-            elif n in mc_today: lines.append(f"• **{n}** — seen today via Monstercount ({human_delta(now_ts-ts)})")
-            elif ts>0: lines.append(f"• **{n}** — last seen {fmt_ts_utc(ts)} ({human_delta(now_ts-ts)})")
-            else: lines.append(f"• **{n}** — no sightings yet")
+            if n in mc_today and ts==0:
+                lines.append(f"• **{n}** — seen today via Monstercount")
+            elif n in mc_today:
+                lines.append(f"• **{n}** — seen today via Monstercount ({human_delta(now_ts-ts)})")
+            elif ts>0:
+                lines.append(f"• **{n}** — last seen {fmt_ts_utc(ts)} ({human_delta(now_ts-ts)})")
+            else:
+                lines.append(f"• **{n}** — no sightings yet")
     return header+"\n"+"\n".join(lines)
 
 def run_daily_summary(update_state_date,test):
     members=set(load_members())
-    html=fetch_html(URL); soup=BeautifulSoup(html,"html.parser")
+
+    # Homepage lesen
+    html=fetch_html(URL)
+    soup=BeautifulSoup(html,"html.parser")
     tbl=find_table_under_heading(soup,SERVER_LABEL.lower())
-    if not tbl: return
+    if not tbl:
+        print("Netherworld table not found on homepage", file=sys.stderr)
+        return
     beq=parse_home_bequiet_rows(tbl)
     online={r["name"] for r in beq}
-    state=load_state(); members=sync_members_from_home_and_ranking(members,state)
+
+    # Members via Homepage/Ranking syncen (nur hinzufügen/entfernen, NICHT via Monstercount)
+    state=load_state()
+    members=sync_members_from_home_and_ranking(members,state)
+
+    # Monstercount nur als Tagesnachweis (keine Adds/Removals)
     try:
-        mc_html=fetch_html(MONSTERCOUNT_URL); mc_soup=BeautifulSoup(mc_html,"html.parser")
+        mc_html=fetch_html(MONSTERCOUNT_URL)
+        mc_soup=BeautifulSoup(mc_html,"html.parser")
         mc_tbl=find_table_under_heading(mc_soup,SERVER_LABEL.lower())
         mc=set(parse_monstercount_names(mc_tbl)) if mc_tbl else set()
-    except: mc=set()
-    last_seen=state.setdefault("last_seen",{}); last_status=state.setdefault("last_status",{})
-    now_ts=int(time.time()); today=now_berlin().date()
+    except Exception as e:
+        print(f"Monstercount fetch/parse error: {e}", file=sys.stderr)
+        mc=set()
+
+    last_seen=state.setdefault("last_seen",{})
+    last_status=state.setdefault("last_status",{})
+
+    now_ts=int(time.time())
+    today=now_berlin().date()
     today_midnight=int(datetime.combine(today,datetime.min.time(),tzinfo=BERLIN).astimezone(timezone.utc).timestamp())
+
     mc_today=set()
-    for n in members: last_seen.setdefault(n,0); last_status.setdefault(n,"offline")
-    for n in online: last_seen[n]=now_ts; last_status[n]="online"
-    for n in (members&mc):
-        if last_seen.get(n,0)<today_midnight: last_seen[n]=now_ts
+    for n in members:
+        last_seen.setdefault(n,0)
+        last_status.setdefault(n,"offline")
+
+    for n in online:
+        last_seen[n]=now_ts
+        last_status[n]="online"
+
+    for n in (members & mc):
+        if last_seen.get(n,0) < today_midnight:
+            last_seen[n]=now_ts
         mc_today.add(n)
-    for n in members-online: last_status[n]="offline"
+
+    for n in members-online:
+        last_status[n]="offline"
+
     today_str=today_berlin_date()
     if update_state_date and state.get("last_daily_date")==today_str:
-        save_state(state); return
-    all_names=set(last_seen)|members|online
-    content=build_daily_text(members,all_names,online,last_seen,mc_today,test)
-    if post_long_to_discord(content):
-        if update_state_date: state["last_daily_date"]=today_str
+        print(f"Daily already posted for {today_str}")
         save_state(state)
-    else: save_state(state)
+        return
+
+    all_names=set(last_seen)|members|online
+    if not all_names:
+        post_to_discord("**Netherworld – beQuiet last seen**\nNo members tracked yet.")
+        return
+
+    content=build_daily_text(members,all_names,online,last_seen,mc_today,test)
+    print(f"[DEBUG] total_length={len(content)}  mc_today={len(mc_today)}", file=sys.stderr)
+
+    if post_long_to_discord(content, limit=1900, with_counters=True):
+        if update_state_date:
+            state["last_daily_date"]=today_str
+        save_state(state)
+    else:
+        print("Daily not posted because webhook missing or Discord rejected the message", file=sys.stderr)
+        save_state(state)
 
 # ---------- Main ----------
 def main():
-    print("[DEBUG] MODE=",MODE,"FORCE_POST=",FORCE_POST,file=sys.stderr)
-    if FORCE_POST=="1": run_daily_summary(False,True); return
-    if MODE=="hourly": run_hourly(); return
-    if MODE=="daily": run_daily_summary(True,False); return
-    if is_berlin_daily_window(now_berlin()): run_daily_summary(True,False)
-    else: run_hourly()
+    print("[DEBUG] MODE=",MODE,"FORCE_POST=",FORCE_POST, file=sys.stderr)
+    print("[DEBUG] WEBHOOK_SET=", bool(WEBHOOK), file=sys.stderr)
+
+    if FORCE_POST=="1":
+        run_daily_summary(update_state_date=False, test=True)
+        return
+
+    if MODE=="hourly":
+        run_hourly()
+        return
+    if MODE=="daily":
+        run_daily_summary(update_state_date=True, test=False)
+        return
+
+    if is_berlin_daily_window(now_berlin()):
+        run_daily_summary(update_state_date=True, test=False)
+    else:
+        run_hourly()
 
 if __name__=="__main__":
-    try: main()
+    try:
+        main()
     except Exception as e:
-        print("Error:",e,file=sys.stderr); sys.exit(1)
+        print("Error:", e, file=sys.stderr)
+        sys.exit(1)
