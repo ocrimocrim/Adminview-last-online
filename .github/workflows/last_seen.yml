@@ -2,8 +2,8 @@ name: beQuiet last seen
 
 on:
   schedule:
-    - cron: "0 * * * *"        # stündlich UTC
-  workflow_dispatch:
+    - cron: "0 * * * *"        # stündlich (UTC)
+  workflow_dispatch:            # manueller Test-Run
 
 jobs:
   run-tracker:
@@ -12,6 +12,7 @@ jobs:
       TZ: Europe/Berlin
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
       MODE: auto
+      FORCE_POST: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,6 +26,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
+
+      - name: Show Berlin time & mode
+        run: |
+          python - << 'PY'
+          from datetime import datetime
+          import os, zoneinfo
+          tz = zoneinfo.ZoneInfo("Europe/Berlin")
+          print("Jetzt in Berlin:", datetime.now(tz).strftime("%Y-%m-%d %H:%M"))
+          print("MODE =", os.getenv("MODE"))
+          print("FORCE_POST =", os.getenv("FORCE_POST"))
+          PY
 
       - name: Run tracker
         run: python bequiet_last_seen.py
