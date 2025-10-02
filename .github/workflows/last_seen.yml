@@ -5,19 +5,22 @@ on:
     - cron: "0 * * * *"        # stündlich (UTC)
   workflow_dispatch:            # manueller Test-Run
 
+permissions:
+  contents: write               # nötig fürs Committen
+
 jobs:
   run-tracker:
     runs-on: ubuntu-latest
     env:
       TZ: Europe/Berlin
-      # hier binden wir DEIN Secret ein:
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL_LASTSEEN }}
       MODE: auto
-      # Bei manuellem Run sofort posten:
       FORCE_POST: ${{ github.event_name == 'workflow_dispatch' && '1' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # saubere History für Commits
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -51,3 +54,24 @@ jobs:
 
       - name: Run tracker
         run: python bequiet_last_seen.py
+
+      - name: Commit updated state & members (if changed)
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          changed="no"
+          git add state_last_seen.json bequiet_members.txt || true
+          if ! git diff --cached --quiet; then
+            git commit -m "[skip ci] Update last-seen state"
+            changed="yes"
+          fi
+
+          if [ "$changed" = "yes" ]; then
+            # Push auf denselben Branch, auf dem der Workflow läuft
+            git push
+            echo "State committed."
+          else
+            echo "No changes to commit."
+          fi
