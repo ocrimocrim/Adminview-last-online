@@ -1,4 +1,5 @@
 1Klas
+AETHER
 akkun
 Albert
 Amogus
@@ -22,6 +23,7 @@ cyberdevil
 deadlyshine
 detox
 Duweiss
+Ebylinia
 ebylinia
 Ember
 endorphin
@@ -37,8 +39,8 @@ French
 GeorgeFloyd
 Godlike
 Grez
-Gumba
 gumba
+Gumba
 Haybazu
 Helashock
 Iverine
@@ -58,6 +60,7 @@ Mirmo
 myria
 Mysako
 nagato
+Nalah
 nemesys
 nobuyuki
 OgGacek
@@ -85,12 +88,14 @@ Tookie
 Ultraviolent
 Unity
 Untu
-WannaHaveItAll
 wannahaveitall
+WannaHaveItAll
+Wodjin
 xxxxx
 XXXxxXXX
 Yatokage
 yoshiyuki
+Yuiy
 yuiy
 zemm
 Zeph
