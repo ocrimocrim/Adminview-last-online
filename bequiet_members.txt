@@ -4,7 +4,6 @@ akkun
 Albert
 Amogus
 Arcana
-Arishem
 Ashlee
 Auralion
 Aynne
@@ -14,6 +13,7 @@ Beef
 blackeye
 bosteeen
 bosteen
+Bricks
 Briefkarsten
 chachi
 Chat
@@ -23,8 +23,10 @@ cyberdevil
 deadlyshine
 detox
 Duweiss
+EBLOCRUSHER
 Ebylinia
 ebylinia
+EINHORNERSINDROSA
 Ember
 endorphin
 EvCeHeVcE
@@ -39,8 +41,8 @@ French
 GeorgeFloyd
 Godlike
 Grez
-gumba
 Gumba
+gumba
 Haybazu
 Helashock
 Iverine
@@ -51,12 +53,14 @@ Lamborghina
 LeadyDeath
 Letozol
 Limiti
+Litus
 madawic
 Maras
 marryme
 Mika
 Milenia
 Mirmo
+Mizu
 myria
 Mysako
 nagato
@@ -67,6 +71,7 @@ OgGacek
 Orasi
 overlord
 patagonia
+Pepino
 Phantoms
 pixel
 Ralf
@@ -95,8 +100,8 @@ xxxxx
 XXXxxXXX
 Yatokage
 yoshiyuki
-Yuiy
 yuiy
+Yuiy
 zemm
 Zeph
 zitrus
