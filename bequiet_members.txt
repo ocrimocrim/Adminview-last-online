@@ -44,8 +44,8 @@ French
 GeorgeFloyd
 Godlike
 Grez
-Gumba
 gumba
+Gumba
 Haybazu
 Helashock
 Iverine
@@ -55,6 +55,7 @@ Korvus
 Kweekmachine
 Lamborghina
 LeadyDeath
+Leerooy
 Letozol
 Limiti
 Litus
@@ -70,8 +71,8 @@ Mysako
 nagato
 Nalah
 nemesys
-nobuyuki
 Nobuyuki
+nobuyuki
 OgGacek
 Orasi
 overlord
@@ -106,8 +107,8 @@ xxxxx
 XXXxxXXX
 Yatokage
 yoshiyuki
-yuiy
 Yuiy
+yuiy
 zemm
 Zeph
 zitrus
