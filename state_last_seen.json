@@ -9,7 +9,7 @@
     "EBLOCRUSHER": 1760670658,
     "OgGacek": 0,
     "marryme": 1760653830,
-    "Auralion": 1760653830,
+    "Auralion": 1760690831,
     "Thaito": 1760652649,
     "Arcana": 0,
     "Beef": 0,
@@ -44,7 +44,8 @@
     "Phantoms": 0,
     "Duweiss": 0,
     "Chat": 1760657031,
-    "Bricks": 1760683788
+    "Bricks": 1760683788,
+    "T1tan": 1760690831
   },
   "last_status": {
     "Nalah": "offline",
@@ -56,7 +57,7 @@
     "EBLOCRUSHER": "offline",
     "OgGacek": "offline",
     "marryme": "offline",
-    "Auralion": "offline",
+    "Auralion": "online",
     "Thaito": "offline",
     "Arcana": "offline",
     "Beef": "offline",
@@ -91,7 +92,8 @@
     "Phantoms": "offline",
     "Duweiss": "offline",
     "Chat": "offline",
-    "Bricks": "online"
+    "Bricks": "online",
+    "T1tan": "online"
   },
   "last_daily_date": "",
   "last_ranking_sync_date": "2025-10-17"
