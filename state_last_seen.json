@@ -27,7 +27,7 @@
     "TheFool": 0,
     "Lamborghina": 0,
     "Amogus": 0,
-    "Yuiy": 0,
+    "Yuiy": 1760683788,
     "Undine": 1760657031,
     "Tank": 0,
     "Wodjin": 1760653830,
@@ -43,7 +43,8 @@
     "Mysako": 0,
     "Phantoms": 0,
     "Duweiss": 0,
-    "Chat": 1760657031
+    "Chat": 1760657031,
+    "Bricks": 1760683788
   },
   "last_status": {
     "Nalah": "offline",
@@ -73,7 +74,7 @@
     "TheFool": "offline",
     "Lamborghina": "offline",
     "Amogus": "offline",
-    "Yuiy": "offline",
+    "Yuiy": "online",
     "Undine": "offline",
     "Tank": "offline",
     "Wodjin": "offline",
@@ -89,7 +90,8 @@
     "Mysako": "offline",
     "Phantoms": "offline",
     "Duweiss": "offline",
-    "Chat": "offline"
+    "Chat": "offline",
+    "Bricks": "online"
   },
   "last_daily_date": "",
   "last_ranking_sync_date": "2025-10-17"
