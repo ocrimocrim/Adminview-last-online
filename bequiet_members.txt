@@ -1,6 +1,7 @@
 AETHER
 Albert
 Amogus
+AntsInThePants
 Arcana
 Auralion
 Beef
@@ -36,7 +37,9 @@ Nalah
 OgGacek
 Orasi
 Phantoms
+Rojana
 Slappz
+Soup
 Tank
 Test
 Thaito
