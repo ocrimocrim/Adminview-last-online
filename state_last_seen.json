@@ -13,12 +13,12 @@
     "Thaito": 1760740386,
     "Arcana": 0,
     "Beef": 1761160978,
-    "Unity": 1761280737,
+    "Unity": 1761284135,
     "Albert": 1761172131,
     "Maras": 0,
     "GeorgeFloyd": 1761262066,
     "Yatokage": 0,
-    "Iverine": 1761280737,
+    "Iverine": 1761284135,
     "Tookie": 0,
     "Orasi": 1761233804,
     "EvCeHeVcE": 0,
@@ -43,7 +43,7 @@
     "Mysako": 0,
     "Phantoms": 1760967455,
     "Duweiss": 0,
-    "Chat": 1761280737,
+    "Chat": 1761284135,
     "Bricks": 1760729045,
     "T1tan": 1761065022,
     "Balmung": 1760700402,
@@ -63,9 +63,10 @@
     "Soup": 1761262066,
     "AntsInThePants": 1761251697,
     "Rojana": 1761254722,
-    "PrettyBlue": 1761280737,
+    "PrettyBlue": 1761284135,
     "Helashock": 1761226905,
-    "Beeru": 1761233804
+    "Beeru": 1761233804,
+    "Kosabi": 1761284135
   },
   "last_status": {
     "Nalah": "offline",
@@ -76,7 +77,7 @@
     "EverNight": "offline",
     "EBLOCRUSHER": "offline",
     "OgGacek": "offline",
-    "marryme": "online",
+    "marryme": "offline",
     "Auralion": "offline",
     "Thaito": "offline",
     "Arcana": "offline",
@@ -133,7 +134,8 @@
     "Rojana": "offline",
     "PrettyBlue": "online",
     "Helashock": "online",
-    "Beeru": "online"
+    "Beeru": "online",
+    "Kosabi": "online"
   },
   "last_daily_date": "2025-10-23",
   "last_ranking_sync_date": "2025-10-23"
