@@ -8,13 +8,13 @@
     "EverNight": 0,
     "EBLOCRUSHER": 1760670658,
     "OgGacek": 1761338223,
-    "marryme": 1762233377,
+    "marryme": 1762237517,
     "Auralion": 1762100238,
     "Thaito": 1761927588,
     "Arcana": 0,
     "Beef": 1762208137,
-    "Unity": 1762233377,
-    "Albert": 1762233377,
+    "Unity": 1762237517,
+    "Albert": 1762237517,
     "Maras": 0,
     "GeorgeFloyd": 1762186769,
     "Yatokage": 0,
@@ -45,7 +45,7 @@
     "Duweiss": 1762103555,
     "Chat": 1761927588,
     "Bricks": 1760729045,
-    "T1tan": 1762201092,
+    "T1tan": 1762237517,
     "Balmung": 1761604455,
     "Falkenauge": 1761251697,
     "Manamy": 1762183019,
@@ -66,7 +66,7 @@
     "PrettyBlue": 1761952474,
     "Helashock": 1761295692,
     "Beeru": 1761233804,
-    "Kosabi": 1762168437,
+    "Kosabi": 1762237517,
     "Stride": 1762067639,
     "Suppenkelle": 1761833788,
     "Sunraku": 1762103555,
@@ -84,7 +84,8 @@
     "Tempest": 1761985128,
     "Slayr": 1762006386,
     "Tamr": 1762194164,
-    "Urbig": 1762165150
+    "Urbig": 1762165150,
+    "Exact": 1762237517
   },
   "last_status": {
     "Nalah": "offline",
@@ -153,7 +154,7 @@
     "PrettyBlue": "online",
     "Helashock": "online",
     "Beeru": "online",
-    "Kosabi": "offline",
+    "Kosabi": "online",
     "Stride": "online",
     "Suppenkelle": "online",
     "Sunraku": "offline",
@@ -171,7 +172,8 @@
     "Tempest": "online",
     "Slayr": "online",
     "Tamr": "online",
-    "Urbig": "online"
+    "Urbig": "online",
+    "Exact": "online"
   },
   "last_daily_date": "2025-10-28",
   "last_ranking_sync_date": "2025-10-28"
