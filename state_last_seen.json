@@ -8,12 +8,12 @@
     "EverNight": 0,
     "EBLOCRUSHER": 1760670658,
     "OgGacek": 1763302386,
-    "marryme": 1763540547,
+    "marryme": 1763543928,
     "Auralion": 1763299276,
-    "Thaito": 1763540547,
+    "Thaito": 1763543928,
     "Arcana": 0,
     "Beef": 1763154875,
-    "Unity": 1763540547,
+    "Unity": 1763543928,
     "Albert": 1763514906,
     "Maras": 0,
     "GeorgeFloyd": 1763497189,
@@ -106,7 +106,8 @@
     "Bersey": 1763296163,
     "SumseBiene": 1763497189,
     "Algiz": 1763493238,
-    "Livi": 1763493238
+    "Livi": 1763493238,
+    "Error": 1763543928
   },
   "last_status": {
     "Nalah": "offline",
@@ -215,7 +216,8 @@
     "Bersey": "online",
     "SumseBiene": "online",
     "Algiz": "online",
-    "Livi": "online"
+    "Livi": "online",
+    "Error": "online"
   },
   "last_daily_date": "2025-10-28",
   "last_ranking_sync_date": "2025-10-28"
