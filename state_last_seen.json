@@ -112,7 +112,8 @@
     "Evoken": 1763954452,
     "Milka": 1763904034,
     "Actimel": 1763907214,
-    "Koaa": 0
+    "Koaa": 0,
+    "Canberro": 0
   },
   "last_status": {
     "Nalah": "offline",
@@ -227,8 +228,9 @@
     "Evoken": "online",
     "Milka": "online",
     "Actimel": "online",
-    "Koaa": "offline"
+    "Koaa": "offline",
+    "Canberro": "offline"
   },
   "last_daily_date": "2025-10-28",
-  "last_ranking_sync_date": "2026-02-03"
+  "last_ranking_sync_date": "2026-02-04"
 }
