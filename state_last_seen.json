@@ -174,7 +174,7 @@
     "GeorgeDroid": "offline",
     "Letrozol": "online",
     "EwilMahsen": "online",
-    "Rassyx": "online",
+    "Rassyx": "offline",
     "Schwanger": "offline",
     "Soup": "offline",
     "AntsInThePants": "offline",
@@ -232,5 +232,5 @@
     "Canberro": "offline"
   },
   "last_daily_date": "2025-10-28",
-  "last_ranking_sync_date": "2026-02-13"
+  "last_ranking_sync_date": "2026-02-16"
 }
