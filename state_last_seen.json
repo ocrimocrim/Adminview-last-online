@@ -225,12 +225,12 @@
     "Livi": "offline",
     "Error": "online",
     "SoloDingens": "online",
-    "Evoken": "online",
+    "Evoken": "offline",
     "Milka": "online",
     "Actimel": "online",
     "Koaa": "offline",
     "Canberro": "offline"
   },
   "last_daily_date": "2025-10-28",
-  "last_ranking_sync_date": "2026-02-20"
+  "last_ranking_sync_date": "2026-02-23"
 }
