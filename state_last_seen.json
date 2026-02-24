@@ -113,7 +113,8 @@
     "Milka": 1763904034,
     "Actimel": 1763907214,
     "Koaa": 0,
-    "Canberro": 0
+    "Canberro": 0,
+    "Yoshiyuki": 0
   },
   "last_status": {
     "Nalah": "offline",
@@ -197,7 +198,7 @@
     "HookahHunter": "online",
     "Diaz": "online",
     "Grindr": "offline",
-    "Tempest": "online",
+    "Tempest": "offline",
     "Slayr": "online",
     "Tamr": "online",
     "Urbig": "online",
@@ -229,8 +230,9 @@
     "Milka": "online",
     "Actimel": "online",
     "Koaa": "offline",
-    "Canberro": "offline"
+    "Canberro": "offline",
+    "Yoshiyuki": "offline"
   },
   "last_daily_date": "2025-10-28",
-  "last_ranking_sync_date": "2026-02-23"
+  "last_ranking_sync_date": "2026-02-24"
 }
