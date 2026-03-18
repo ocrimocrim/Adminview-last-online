@@ -170,7 +170,7 @@
     "Endorphin": "offline",
     "Ebylinia": "offline",
     "Kerav": "offline",
-    "Litus": "online",
+    "Litus": "offline",
     "Keksii": "offline",
     "Gumba": "offline",
     "GeorgeDroid": "offline",
@@ -236,5 +236,5 @@
     "Nobuyuki": "offline"
   },
   "last_daily_date": "2025-10-28",
-  "last_ranking_sync_date": "2026-03-17"
+  "last_ranking_sync_date": "2026-03-18"
 }
