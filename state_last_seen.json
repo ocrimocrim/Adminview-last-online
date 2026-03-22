@@ -208,7 +208,7 @@
     "Joko": "online",
     "Davies": "online",
     "Hope": "offline",
-    "DramaLama": "online",
+    "DramaLama": "offline",
     "Hafren": "offline",
     "Naturwunder": "online",
     "GLITCH": "online",
@@ -236,5 +236,5 @@
     "Nobuyuki": "offline"
   },
   "last_daily_date": "2025-10-28",
-  "last_ranking_sync_date": "2026-03-20"
+  "last_ranking_sync_date": "2026-03-22"
 }
