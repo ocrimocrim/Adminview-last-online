@@ -123,7 +123,7 @@
     "FarmerJoe": "offline",
     "deadlyshine": "offline",
     "FentReactor": "offline",
-    "Kweekmachine": "online",
+    "Kweekmachine": "offline",
     "EverNight": "offline",
     "EBLOCRUSHER": "offline",
     "OgGacek": "offline",
@@ -238,5 +238,5 @@
     "Aynne": "offline"
   },
   "last_daily_date": "2025-10-28",
-  "last_ranking_sync_date": "2026-05-02"
+  "last_ranking_sync_date": "2026-05-03"
 }
