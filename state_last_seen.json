@@ -183,7 +183,7 @@
     "AntsInThePants": "offline",
     "Rojana": "offline",
     "PrettyBlue": "online",
-    "Helashock": "online",
+    "Helashock": "offline",
     "Beeru": "online",
     "Kosabi": "offline",
     "Stride": "online",
@@ -238,5 +238,5 @@
     "Aynne": "offline"
   },
   "last_daily_date": "2025-10-28",
-  "last_ranking_sync_date": "2026-06-13"
+  "last_ranking_sync_date": "2026-06-16"
 }
