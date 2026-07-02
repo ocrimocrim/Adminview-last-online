@@ -116,7 +116,8 @@
     "Canberro": 0,
     "Yoshiyuki": 0,
     "Nobuyuki": 0,
-    "Aynne": 1777246516
+    "Aynne": 1777246516,
+    "Korvus": 1783014122
   },
   "last_status": {
     "Nalah": "offline",
@@ -235,7 +236,8 @@
     "Canberro": "offline",
     "Yoshiyuki": "offline",
     "Nobuyuki": "offline",
-    "Aynne": "offline"
+    "Aynne": "offline",
+    "Korvus": "online"
   },
   "last_daily_date": "2025-10-28",
   "last_ranking_sync_date": "2026-07-01"
